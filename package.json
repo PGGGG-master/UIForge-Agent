@@ -1,0 +1,9 @@
+{
+  "name": "uiforge-agent-tools",
+  "private": true,
+  "description": "UIForge-Agent 工具依赖（Mermaid CLI 等）",
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.4.2",
+    "jsdom": "^29.1.1"
+  }
+}

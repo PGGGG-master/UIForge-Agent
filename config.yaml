@@ -1,0 +1,14 @@
+llm:
+  base_url: https://api.deepseek.com
+  model: deepseek-v4-pro
+  api_key_env: DEEPSEEK_API_KEY
+  temperature: 0.2
+  max_tokens: 16384
+  # 仅 DeepSeek 生效；其它 base_url 忽略
+  thinking:
+    enabled: true
+    reasoning_effort: high
+  timeout_seconds: 300
+
+paths:
+  examples_dir: examples
