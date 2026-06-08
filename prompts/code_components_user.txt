@@ -1,0 +1,13 @@
+需求摘要：
+{requirement_text}
+
+设计规格 JSON：
+{design_spec}
+
+组件设计：
+{component_design}
+
+当前主页面源码（{main_page_rel}）：
+{main_page_source}
+
+请生成主页面所 import 的子组件文件（src/components/*.jsx）。若无需独立文件则回复「无需额外子组件文件」。
