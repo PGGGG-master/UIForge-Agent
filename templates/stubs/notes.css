@@ -1,0 +1,143 @@
+/* UIForge 笔记应用基础样式（test1 / NoteApp 兜底） */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.note-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.note-app__header {
+  padding: 12px 20px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #10b981;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.note-app__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.note-sidebar {
+  width: 280px;
+  border-right: 1px solid #e2e8f0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+}
+
+.note-sidebar input[type="search"],
+.note-sidebar input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.note-sidebar button,
+.note-editor button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #10b981;
+  color: #fff;
+  font-weight: 600;
+}
+
+.note-sidebar button:hover,
+.note-editor button:hover {
+  background: #059669;
+}
+
+.note-sidebar ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.note-sidebar li {
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.note-sidebar li:hover {
+  background: #f1f5f9;
+}
+
+.note-sidebar li.selected {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.note-editor {
+  flex: 1;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+}
+
+.note-editor input,
+.note-editor textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.note-editor textarea {
+  flex: 1;
+  min-height: 200px;
+  resize: vertical;
+}
+
+.note-editor__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.note-editor button.danger {
+  background: #ef4444;
+}
+
+.note-editor button.danger:hover {
+  background: #dc2626;
+}
+
+.note-editor button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.note-editor__hint,
+.save-hint {
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.note-editor__empty {
+  color: #64748b;
+  margin: auto;
+  text-align: center;
+}

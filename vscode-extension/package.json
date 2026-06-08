@@ -1,0 +1,75 @@
+{
+  "name": "uiforge-agent",
+  "displayName": "UIForge-Agent",
+  "description": "面向 Web 前端功能页面开发的需求到代码与测试生成智能体",
+  "version": "0.1.0",
+  "publisher": "uiforge",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onView:uiforge.sidebar"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "uiforge-sidebar",
+          "title": "UIForge-Agent",
+          "icon": "$(rocket)"
+        }
+      ]
+    },
+    "views": {
+      "uiforge-sidebar": [
+        {
+          "type": "webview",
+          "id": "uiforge.sidebar",
+          "name": "UIForge"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "uiforge.useCurrentFile",
+        "title": "UIForge: 使用当前打开文件"
+      },
+      {
+        "command": "uiforge.pickRequirementFile",
+        "title": "UIForge: 选择需求文件"
+      },
+      {
+        "command": "uiforge.runTask",
+        "title": "UIForge: 开始执行"
+      },
+      {
+        "command": "uiforge.runRevise",
+        "title": "UIForge: 应用修订"
+      },
+      {
+        "command": "uiforge.showSetupHelp",
+        "title": "UIForge: 插件配置说明"
+      }
+    ],
+    "configuration": {
+      "title": "UIForge-Agent",
+      "properties": {
+        "uiforge.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python 可执行文件路径"
+        },
+        "uiforge.projectRoot": {
+          "type": "string",
+          "default": "",
+          "description": "UIForge-Agent 安装目录（含 uiforge.py），在其它工作区中使用插件时必填"
+        },
+        "uiforge.useCaseSubfolder": {
+          "type": "boolean",
+          "default": false,
+          "description": "为 true 时：产物写入 工作区/<用例名>/；否则直接写入工作区根目录"
+        }
+      }
+    }
+  }
+}
