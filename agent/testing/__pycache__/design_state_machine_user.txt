@@ -1,0 +1,7 @@
+交互分析：
+{interaction_analysis}
+
+状态设计：
+{state_design}
+
+请只输出一个 Mermaid stateDiagram-v2 代码块，覆盖主要用户操作路径。

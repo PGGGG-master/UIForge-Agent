@@ -1,0 +1,7 @@
+需求摘要：
+{requirement_text}
+
+主页面与子组件中需要满足的 CSS import：
+{css_imports}
+
+请为上述每个路径生成完整 CSS 文件。若列表为空则回复「无需 CSS 文件」。

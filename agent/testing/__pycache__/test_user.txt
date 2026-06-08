@@ -1,0 +1,13 @@
+需求：
+{requirement_text}
+
+设计规格：
+{design_spec}
+
+接口契约：
+{api_contract}
+
+已有页面代码摘要：
+{code_summary}
+
+请生成 Vitest 测试文件（至少页面测试与 API 测试各一个）。

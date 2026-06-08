@@ -1,0 +1,19 @@
+需求原文（摘要）：
+{requirement_text}
+
+组件设计：
+{component_design}
+
+状态设计：
+{state_design}
+
+接口契约：
+{api_contract}
+
+UML 类图：
+{class_diagram}
+
+状态机图：
+{state_machine}
+
+请只输出 design_spec JSON 对象（```json 代码块）。

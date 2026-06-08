@@ -1,0 +1,10 @@
+需求摘要：
+{requirement_text}
+
+设计规格 JSON：
+{design_spec}
+
+接口契约：
+{api_contract}
+
+请生成 src/api/ 与 src/mocks/handlers.js。

@@ -1,0 +1,16 @@
+需求文档：
+{requirement_text}
+
+设计规格：
+{design_spec}
+
+接口契约（若无 API 可忽略）：
+{api_contract}
+
+主页面组件名：{page_component}
+主页面路径：{main_page_path}
+
+项目源码（code 阶段产物，请据此编写测试）：
+{code_summary}
+
+请生成本项目专属的 Vitest 测试文件（仅 tests/ 下文件，不要重复生成业务源码）。

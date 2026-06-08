@@ -1,0 +1,10 @@
+需求原文：
+{requirement_text}
+
+需求分析：
+{requirement_analysis}
+
+交互分析：
+{interaction_analysis}
+
+请只输出组件设计 Markdown（## 组件划分、## 组件职责），明确 page_component 组件名。

@@ -1,0 +1,7 @@
+需求原文：
+{requirement_text}
+
+需求分析：
+{requirement_analysis}
+
+请生成交互分析文档。
