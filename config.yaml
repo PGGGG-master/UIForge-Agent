@@ -12,3 +12,11 @@ llm:
 
 paths:
   examples_dir: examples
+
+debug_memory:
+  enabled: true
+  sqlite_path: memory/build_debug/experience.db
+  max_build_retries: 3
+  qdrant_collection: uiforge_build_debug
+  vector_size: 384
+  min_similarity_score: 0.5
