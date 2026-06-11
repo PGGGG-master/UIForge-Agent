@@ -1,0 +1,10 @@
+请根据以下内容生成状态机图（stateDiagram-v2）。
+
+## 交互分析
+{interaction_analysis}
+
+## 状态设计
+{state_design}
+
+请只输出一个 Mermaid 代码块（```mermaid ... ```），不要其它说明。
+要求：抽象状态名、箭头带事件标签、6～10 个核心状态、扁平结构为主。

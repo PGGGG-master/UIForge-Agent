@@ -1,0 +1,13 @@
+需求摘要：
+{requirement_text}
+
+## 修复前代码快照
+{initial_code}
+
+## 修复后代码快照
+{final_code}
+
+## 各轮报错与修复过程
+{attempts_history}
+
+请输出 JSON lessons。

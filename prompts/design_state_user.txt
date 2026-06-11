@@ -1,0 +1,10 @@
+需求原文：
+{requirement_text}
+
+交互分析：
+{interaction_analysis}
+
+组件设计：
+{component_design}
+
+请只输出状态设计 Markdown（## 状态字段、## 状态流转说明）。

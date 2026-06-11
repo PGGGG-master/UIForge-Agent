@@ -1,0 +1,10 @@
+项目需求摘要：
+{requirement_text}
+
+测试执行摘要（JSON）：
+{test_status_json}
+
+Vitest 原始结果（JSON，可能已截断）：
+{vitest_result_json}
+
+请输出完整 Markdown 测试报告。

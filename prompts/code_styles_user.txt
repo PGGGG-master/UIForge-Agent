@@ -1,0 +1,13 @@
+需求摘要：
+{requirement_text}
+
+主页面与子组件中需要满足的 CSS import：
+{css_imports}
+
+当前主页面源码（{main_page_rel}）：
+{main_page_source}
+
+当前子组件源码：
+{component_sources}
+
+请根据上述 jsx 中的 className / 布局结构，为 css_imports 中每个路径生成完整 CSS 文件。选择器必须与 jsx 中实际使用的 class 名一致。若列表为空则回复「无需 CSS 文件」。

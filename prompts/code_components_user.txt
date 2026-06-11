@@ -10,4 +10,8 @@
 当前主页面源码（{main_page_rel}）：
 {main_page_source}
 
-请生成主页面所 import 的子组件文件（src/components/*.jsx）。若无需独立文件则回复「无需额外子组件文件」。
+必须生成的子组件（与主页面 import 一致，缺一不可）：
+{required_components}
+
+请为上述每个组件各输出一个 ```jsx 代码块（首行 // path: src/components/组件名.jsx），禁止只输出说明文字。
+若主页面未 import 任何子组件，且 UI 已全部内联，才可只回复一行：无需额外子组件文件

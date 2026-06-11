@@ -1,0 +1,13 @@
+需求：
+{requirement_text}
+
+设计规格 JSON：
+{design_spec}
+
+组件设计：
+{component_design}
+
+主页面组件名：{page_component}
+主页面路径：{main_page_rel}
+
+请只生成主页面 src/pages/{page_component}.jsx（一个 jsx 代码块，首行 // path: {main_page_rel}）。

@@ -1,0 +1,13 @@
+需求摘要：
+{requirement_text}
+
+## npm run build 报错
+{error_log}
+
+## 历史相似报错经验
+{retrieved_lessons}
+
+## 当前前端源码
+{frontend_sources}
+
+请修复报错并输出完整文件代码块（// path: 开头）。

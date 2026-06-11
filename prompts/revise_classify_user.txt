@@ -1,0 +1,12 @@
+原始需求摘要：
+{requirement_text}
+
+设计规格摘要：
+{design_spec}
+
+是否有 REST API：{has_rest_api}
+
+用户修订意见：
+{user_feedback}
+
+请输出 JSON routes。

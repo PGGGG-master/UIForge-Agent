@@ -1,0 +1,13 @@
+需求原文：
+{requirement_text}
+
+需求规格 JSON（参考）：
+{requirement_spec_json}
+
+组件设计：
+{component_design}
+
+状态设计：
+{state_design}
+
+请只输出接口契约 Markdown。纯 localStorage 项目写「无 REST API」。

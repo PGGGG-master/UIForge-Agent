@@ -1,0 +1,10 @@
+需求原文（摘要）：
+{requirement_text}
+
+组件设计：
+{component_design}
+
+状态设计：
+{state_design}
+
+请只输出一个 Mermaid classDiagram 代码块，主页面组件名与组件设计一致。
