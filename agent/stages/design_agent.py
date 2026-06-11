@@ -66,6 +66,28 @@ def _parse_mermaid_response(response: str) -> str:
     return text
 
 
+def _append_revise_context(
+    user: str,
+    *,
+    user_feedback: str = "",
+    current_content: str = "",
+) -> str:
+    parts = [user]
+    if current_content.strip():
+        parts.append(f"\n\n## 当前内容（在此基础上修改）\n{current_content.strip()}")
+    if user_feedback.strip():
+        parts.append(
+            f"\n\n## 用户修订意见（必须落实）\n{user_feedback.strip()}\n\n"
+            "在保持本步输出约束下修改以满足上述意见。"
+        )
+    return "".join(parts)
+
+
+def _save_llm_debug(ctx: AgentContext, name: str, text: str) -> None:
+    ctx.output_path.joinpath("report").mkdir(parents=True, exist_ok=True)
+    fw.write_text(ctx.output_path, f"report/{name}", text[:50000])
+
+
 def _run_text_step(
     ctx: AgentContext,
     llm: LLMClient,
@@ -76,11 +98,19 @@ def _run_text_step(
     out_rel: str,
     min_len: int = 30,
     extra_validate: Callable[[str], str | None] | None = None,
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
 ) -> None:
     total = 6
-    ctx.log(f"[DesignAgent] Step {step_no}/{total} {prompt_name}...")
+    ctx.log(f"{log_prefix} Step {step_no}/{total} {prompt_name}...")
     system, user_tpl = llm.load_prompt(prompt_name)
-    user = user_tpl.format(**user_kwargs)
+    user = _append_revise_context(
+        user_tpl.format(**user_kwargs),
+        user_feedback=user_feedback,
+        current_content=current_content,
+    )
     last_err = ""
 
     for attempt in range(1, 3):
@@ -88,6 +118,8 @@ def _run_text_step(
         if attempt > 1 and last_err:
             prompt_user = f"{user}\n\n上次校验失败：{last_err}\n请修正后只输出本步要求的内容。"
         response = llm.complete(system, prompt_user)
+        if debug_name:
+            _save_llm_debug(ctx, f"{debug_name}_attempt{attempt}.txt", response)
         content = _parse_markdown_response(response)
         last_err = validate_markdown_design(content, min_len=min_len) or ""
         if not last_err and extra_validate:
@@ -95,7 +127,7 @@ def _run_text_step(
         if not last_err:
             fw.write_text(ctx.output_path, out_rel, content)
             ctx.add_manifest(out_rel)
-            ctx.log(f"[DesignAgent] Step {step_no}/{total} 完成 → {out_rel}")
+            ctx.log(f"{log_prefix} Step {step_no}/{total} 完成 → {out_rel}")
             return
 
     raise ValidationError(f"Step {step_no} ({prompt_name}) 失败: {last_err}")
@@ -111,11 +143,19 @@ def _run_mermaid_step(
     user_kwargs: dict[str, str],
     out_rel: str,
     prefix_validate: Callable[[str], str | None],
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
 ) -> None:
     total = 6
-    ctx.log(f"[DesignAgent] Step {step_no}/{total} {prompt_name}...")
+    ctx.log(f"{log_prefix} Step {step_no}/{total} {prompt_name}...")
     system, user_tpl = llm.load_prompt(prompt_name)
-    user = user_tpl.format(**user_kwargs)
+    user = _append_revise_context(
+        user_tpl.format(**user_kwargs),
+        user_feedback=user_feedback,
+        current_content=current_content,
+    )
     last_err = ""
 
     for attempt in range(1, 3):
@@ -126,6 +166,8 @@ def _run_mermaid_step(
                 "请输出可被 Mermaid 正确解析的代码块。"
             )
         response = llm.complete(system, prompt_user)
+        if debug_name:
+            _save_llm_debug(ctx, f"{debug_name}_attempt{attempt}.txt", response)
         content = _parse_mermaid_response(response)
         last_err = prefix_validate(content) or ""
         if not last_err:
@@ -138,13 +180,22 @@ def _run_mermaid_step(
             ) or ""
         if not last_err:
             ctx.add_manifest(out_rel)
-            ctx.log(f"[DesignAgent] Step {step_no}/{total} 完成 → {out_rel}")
+            ctx.log(f"{log_prefix} Step {step_no}/{total} 完成 → {out_rel}")
             return
 
     raise ValidationError(f"Step {step_no} ({prompt_name}) 失败: {last_err}")
 
 
-def _step_component(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext) -> None:
+def _step_component(
+    ctx: AgentContext,
+    llm: LLMClient,
+    base: DesignBaseContext,
+    *,
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
+) -> None:
     _run_text_step(
         ctx,
         llm,
@@ -157,10 +208,23 @@ def _step_component(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext) 
         },
         out_rel="design/component_design.md",
         min_len=50,
+        user_feedback=user_feedback,
+        current_content=current_content or _read_design(ctx, "design/component_design.md"),
+        log_prefix=log_prefix,
+        debug_name=debug_name,
     )
 
 
-def _step_state(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext) -> None:
+def _step_state(
+    ctx: AgentContext,
+    llm: LLMClient,
+    base: DesignBaseContext,
+    *,
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
+) -> None:
     _run_text_step(
         ctx,
         llm,
@@ -173,10 +237,23 @@ def _step_state(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext) -> N
         },
         out_rel="design/state_design.md",
         min_len=30,
+        user_feedback=user_feedback,
+        current_content=current_content or _read_design(ctx, "design/state_design.md"),
+        log_prefix=log_prefix,
+        debug_name=debug_name,
     )
 
 
-def _step_api(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext) -> None:
+def _step_api(
+    ctx: AgentContext,
+    llm: LLMClient,
+    base: DesignBaseContext,
+    *,
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
+) -> None:
     _run_text_step(
         ctx,
         llm,
@@ -190,6 +267,10 @@ def _step_api(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext) -> Non
         },
         out_rel="design/api_contract.md",
         min_len=20,
+        user_feedback=user_feedback,
+        current_content=current_content or _read_design(ctx, "design/api_contract.md"),
+        log_prefix=log_prefix,
+        debug_name=debug_name,
     )
 
 
@@ -198,6 +279,11 @@ def _step_class_diagram(
     llm: LLMClient,
     base: DesignBaseContext,
     mmdc_cmd: list[str],
+    *,
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
 ) -> None:
     _run_mermaid_step(
         ctx,
@@ -212,6 +298,10 @@ def _step_class_diagram(
         },
         out_rel="design/class_diagram.mmd",
         prefix_validate=validate_class_diagram_text,
+        user_feedback=user_feedback,
+        current_content=current_content or _read_design(ctx, "design/class_diagram.mmd"),
+        log_prefix=log_prefix,
+        debug_name=debug_name,
     )
 
 
@@ -220,6 +310,11 @@ def _step_state_machine(
     llm: LLMClient,
     base: DesignBaseContext,
     mmdc_cmd: list[str],
+    *,
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
 ) -> None:
     _run_mermaid_step(
         ctx,
@@ -233,20 +328,37 @@ def _step_state_machine(
         },
         out_rel="design/state_machine.mmd",
         prefix_validate=validate_state_machine_text,
+        user_feedback=user_feedback,
+        current_content=current_content or _read_design(ctx, "design/state_machine.mmd"),
+        log_prefix=log_prefix,
+        debug_name=debug_name,
     )
 
 
-def _step_design_spec(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext) -> None:
+def _step_design_spec(
+    ctx: AgentContext,
+    llm: LLMClient,
+    base: DesignBaseContext,
+    *,
+    user_feedback: str = "",
+    current_content: str = "",
+    log_prefix: str = "[DesignAgent]",
+    debug_name: str | None = None,
+) -> None:
     step_no = 6
-    ctx.log(f"[DesignAgent] Step {step_no}/6 design_spec...")
+    ctx.log(f"{log_prefix} Step {step_no}/6 design_spec...")
     system, user_tpl = llm.load_prompt("design_spec")
-    user = user_tpl.format(
-        requirement_text=base.requirement_text[:3500],
-        component_design=_read_design(ctx, "design/component_design.md"),
-        state_design=_read_design(ctx, "design/state_design.md"),
-        api_contract=_read_design(ctx, "design/api_contract.md"),
-        class_diagram=_read_design(ctx, "design/class_diagram.mmd"),
-        state_machine=_read_design(ctx, "design/state_machine.mmd"),
+    user = _append_revise_context(
+        user_tpl.format(
+            requirement_text=base.requirement_text[:3500],
+            component_design=_read_design(ctx, "design/component_design.md"),
+            state_design=_read_design(ctx, "design/state_design.md"),
+            api_contract=_read_design(ctx, "design/api_contract.md"),
+            class_diagram=_read_design(ctx, "design/class_diagram.mmd"),
+            state_machine=_read_design(ctx, "design/state_machine.mmd"),
+        ),
+        user_feedback=user_feedback,
+        current_content=current_content or _read_design(ctx, "design/design_spec.json"),
     )
     last_err = ""
 
@@ -256,9 +368,14 @@ def _step_design_spec(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext
             prompt_user = f"{user}\n\n上次校验失败：{last_err}\n请输出符合 schema 的 JSON 对象。"
         try:
             response = llm.complete(system, prompt_user)
+            if debug_name:
+                _save_llm_debug(ctx, f"{debug_name}_attempt{attempt}.txt", response)
             raw = extract_json_object(response)
         except ValueError:
-            raw = llm.complete_json(system, prompt_user)
+            response = llm.complete_json(system, prompt_user)
+            if debug_name:
+                _save_llm_debug(ctx, f"{debug_name}_attempt{attempt}.txt", response)
+            raw = extract_json_object(response)
 
         try:
             spec = coerce_design_spec(raw)
@@ -268,7 +385,7 @@ def _step_design_spec(ctx: AgentContext, llm: LLMClient, base: DesignBaseContext
                 ctx.design_spec = spec
                 fw.write_json(ctx.output_path, "design/design_spec.json", spec)
                 ctx.add_manifest("design/design_spec.json")
-                ctx.log("[DesignAgent] Step 6/6 完成 → design/design_spec.json")
+                ctx.log(f"{log_prefix} Step 6/6 完成 → design/design_spec.json")
                 return
         except ValidationError as exc:
             last_err = str(exc)

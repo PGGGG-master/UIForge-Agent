@@ -8,10 +8,16 @@ from agent import file_writer as fw
 from agent.code_integrity import repair_project_integrity
 from agent.code_validate import validate_code_outputs
 from agent.context import AgentContext
+from agent.design_tools import ensure_mmdc
+from agent.design_validate import validate_design_outputs
 from agent.llm_client import LLMClient
 from agent.revise_router import (
+    CODE_ROUTES,
+    DESIGN_ROUTES,
     ReviseRoute,
     classify_feedback,
+    is_code_route,
+    is_design_route,
     resolve_revise_routes,
     route_label,
 )
@@ -23,13 +29,25 @@ from agent.stages.code_agent import (
     _step_main_page,
     _step_styles,
 )
-from agent.validators import ValidationError, project_uses_rest_api, validate_main_page_artifact
+from agent.stages.design_agent import (
+    DesignBaseContext,
+    _load_base_context,
+    _step_api as _step_design_api,
+    _step_class_diagram,
+    _step_component,
+    _step_design_spec,
+    _step_state,
+    _step_state_machine,
+)
+from agent.validators import (
+    ValidationError,
+    project_uses_rest_api,
+    validate_design_artifacts,
+    validate_main_page_artifact,
+)
 
 FEEDBACK_REL = "feedback/revision.md"
-DESIGN_FOLLOWUP_REL = "feedback/design_followup.md"
 HISTORY_REL = "report/revision_history.md"
-
-EXECUTABLE_ROUTES: set[ReviseRoute] = {"main_page", "components", "api", "styles"}
 
 
 def _feedback_path(ctx: AgentContext) -> Path:
@@ -64,22 +82,7 @@ def _append_history(ctx: AgentContext, feedback: str, routes: list[ReviseRoute],
         fw.write_text(ctx.output_path, HISTORY_REL, "# 修订历史\n" + block)
 
 
-def _record_design_followup(ctx: AgentContext, feedback: str) -> None:
-    note = (
-        f"## {datetime.now(timezone.utc).isoformat()}\n\n"
-        f"{feedback}\n\n"
-        "请先执行：`python uiforge.py --task design --input <需求.md> --output <本目录>`\n"
-        "再执行 `--task code` 或 `--task revise`。\n\n"
-    )
-    path = ctx.output_path / DESIGN_FOLLOWUP_REL
-    if path.exists():
-        fw.write_text(ctx.output_path, DESIGN_FOLLOWUP_REL, path.read_text(encoding="utf-8") + "\n" + note)
-    else:
-        fw.write_text(ctx.output_path, DESIGN_FOLLOWUP_REL, "# 设计跟进\n\n" + note)
-    ctx.log(f"[ReviseAgent] 已记录设计级意见 → {DESIGN_FOLLOWUP_REL}")
-
-
-def _run_route(
+def _run_code_route(
     ctx: AgentContext,
     llm: LLMClient,
     base: CodeBaseContext,
@@ -98,11 +101,39 @@ def _run_route(
         _step_components(ctx, llm, base, **kwargs)
     elif route == "api":
         if not project_uses_rest_api(ctx):
-            ctx.log("[ReviseAgent] 跳过 API 步骤（当前项目无 REST API）")
+            ctx.log("[ReviseAgent] 跳过 Code API 步骤（当前项目无 REST API）")
             return
         _step_api(ctx, llm, base, **kwargs)
     elif route == "styles":
         _step_styles(ctx, llm, base, **kwargs)
+
+
+def _run_design_route(
+    ctx: AgentContext,
+    llm: LLMClient,
+    base: DesignBaseContext,
+    mmdc_cmd: list[str],
+    route: ReviseRoute,
+    feedback: str,
+    *,
+    round_no: int,
+) -> None:
+    prefix = "[ReviseAgent]"
+    debug = f"llm_revise_r{round_no}_{route}.txt"
+    kwargs = dict(user_feedback=feedback, log_prefix=prefix, debug_name=debug)
+
+    if route == "design_component":
+        _step_component(ctx, llm, base, **kwargs)
+    elif route == "design_state":
+        _step_state(ctx, llm, base, **kwargs)
+    elif route == "design_api":
+        _step_design_api(ctx, llm, base, **kwargs)
+    elif route == "design_class":
+        _step_class_diagram(ctx, llm, base, mmdc_cmd, **kwargs)
+    elif route == "design_state_machine":
+        _step_state_machine(ctx, llm, base, mmdc_cmd, **kwargs)
+    elif route == "design_spec":
+        _step_design_spec(ctx, llm, base, **kwargs)
 
 
 def run(ctx: AgentContext, llm: LLMClient | None) -> None:
@@ -111,45 +142,89 @@ def run(ctx: AgentContext, llm: LLMClient | None) -> None:
         raise ValidationError("revise 阶段需要 DEEPSEEK_API_KEY。")
 
     feedback = load_feedback(ctx)
-    base = _load_code_context(ctx)
-    validate_main_page_artifact(ctx.output_path)
+
+    design_spec_json = ""
+    spec_path = ctx.output_path / "design" / "design_spec.json"
+    if spec_path.exists():
+        design_spec_json = spec_path.read_text(encoding="utf-8")
 
     routes, reason = classify_feedback(
         ctx,
         llm,
         feedback,
-        design_spec_json=base.design_spec_json,
+        design_spec_json=design_spec_json,
     )
     if not routes:
         raise ValidationError("无法从意见中识别修订范围。")
 
+    main_page_rel = "src/pages/AppPage.jsx"
+    if spec_path.exists():
+        try:
+            import json
+
+            spec = json.loads(design_spec_json)
+            page = spec.get("page_component", "AppPage")
+            if isinstance(page, str) and page.strip():
+                main_page_rel = f"src/pages/{page.strip()}.jsx"
+        except Exception:
+            pass
+
     routes = resolve_revise_routes(
         ctx,
         routes,
-        main_page_rel=base.main_page_rel,
+        main_page_rel=main_page_rel,
         feedback=feedback,
     )
 
-    executable = [r for r in routes if r in EXECUTABLE_ROUTES]
-    if "design" in routes:
-        _record_design_followup(ctx, feedback)
-        ctx.log("[ReviseAgent] 意见含设计级变更，请先 --task design")
+    design_routes = [r for r in routes if is_design_route(r)]
+    code_routes = [r for r in routes if is_code_route(r)]
 
-    if not executable:
-        raise ValidationError(
-            "意见仅涉及设计级变更，请先执行 --task design 更新设计后再 revise。"
-        )
+    if design_routes:
+        validate_design_artifacts(ctx.output_path)
+    if code_routes:
+        validate_main_page_artifact(ctx.output_path)
 
-    ctx.log(f"[ReviseAgent] 将执行: {[route_label(r) for r in executable]}")
-    for i, route in enumerate(executable, start=1):
+    if not design_routes and not code_routes:
+        raise ValidationError("无法从意见中识别可执行的修订范围。")
+
+    ctx.log(f"[ReviseAgent] 将执行: {[route_label(r) for r in routes]}")
+
+    design_base: DesignBaseContext | None = None
+    mmdc_cmd: list[str] | None = None
+    if design_routes:
+        design_base = _load_base_context(ctx)
+        mmdc_cmd = ensure_mmdc(ctx.project_root)
+
+    code_base: CodeBaseContext | None = None
+    if code_routes:
+        code_base = _load_code_context(ctx)
+
+    for i, route in enumerate(routes, start=1):
         ctx.log(f"[ReviseAgent] → {route_label(route)}")
-        _run_route(ctx, llm, base, route, feedback, round_no=i)
+        if is_design_route(route):
+            assert design_base is not None and mmdc_cmd is not None
+            _run_design_route(
+                ctx, llm, design_base, mmdc_cmd, route, feedback, round_no=i
+            )
+        elif is_code_route(route):
+            assert code_base is not None
+            _run_code_route(ctx, llm, code_base, route, feedback, round_no=i)
 
-    validate_main_page_artifact(ctx.output_path)
-    warnings = validate_code_outputs(ctx)
-    if warnings:
-        ctx.log(f"[ReviseAgent] 收尾校验 {len(warnings)} 条警告")
+    if design_routes:
+        warnings = validate_design_outputs(
+            ctx.output_path,
+            ctx.requirement_text,
+            project_root=ctx.project_root,
+        )
+        if warnings:
+            ctx.log(f"[ReviseAgent] 设计收尾校验 {len(warnings)} 条警告")
 
-    repair_project_integrity(ctx, llm)
+    if code_routes:
+        validate_main_page_artifact(ctx.output_path)
+        warnings = validate_code_outputs(ctx)
+        if warnings:
+            ctx.log(f"[ReviseAgent] 代码收尾校验 {len(warnings)} 条警告")
+        repair_project_integrity(ctx, llm)
+
     _append_history(ctx, feedback, routes, reason)
     ctx.log("[ReviseAgent] 修订完成")

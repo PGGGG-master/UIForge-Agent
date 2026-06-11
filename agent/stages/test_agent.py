@@ -38,6 +38,11 @@ def run(ctx: AgentContext, llm: LLMClient | None = None) -> None:
 
     ctx.log("[Test] 执行 Vitest（无 LLM）...")
     run_vitest(ctx)
+    if ctx.test_result.get("total", 0) == 0:
+        raise ValidationError(
+            "Vitest 未执行到任何用例（0/0）。"
+            "详见 report/vitest_result.json 与 tests/*.test.jsx"
+        )
 
     ctx.log("[Test] 第 2 次 LLM：根据测试结果生成检测报告...")
     report_agent.write_test_report(ctx, llm)

@@ -110,12 +110,57 @@ def _read_main_page_source(ctx: AgentContext, base: CodeBaseContext) -> str:
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
+def _read_component_sources(ctx: AgentContext, main_src: str) -> str:
+    """读取主页面 import 的子组件源码，供样式步骤对齐 className。"""
+    imports = re.findall(
+        r"""from\s+['"](?:\.\./|\./)components/([\w-]+)['"]""",
+        main_src,
+    )
+    parts: list[str] = []
+    for name in imports:
+        comp_path = ctx.output_path / "src" / "components" / f"{name}.jsx"
+        if not comp_path.exists():
+            continue
+        rel = f"src/components/{name}.jsx"
+        text = comp_path.read_text(encoding="utf-8", errors="ignore")
+        parts.append(f"--- {rel} ---\n{text}")
+    return "\n\n".join(parts) if parts else "（无子组件文件）"
+
+
+_SKIP_LINE_RE = re.compile(
+    r"^\s*(?:无需额外子组件文件|无需额外子组件|无需\s*CSS\s*文件|无需\s*CSS)\s*\.?\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+_COMPONENT_IMPORT_RE = re.compile(
+    r"""from\s+['"](?:\.\./|\./)components/([\w-]+)['"]""",
+)
+
+
 def _is_skip_response(response: str) -> bool:
+    """仅当回复为明确的单行跳过声明且无代码块时视为跳过。"""
     t = response.strip()
     if not t:
         return True
-    skip_markers = ("无需额外", "无需 CSS", "不需要", "无额外")
-    return any(m in t for m in skip_markers) and "```" not in t
+    if "```" in t or re.search(r"^\s*//\s*path:\s*", t, re.MULTILINE):
+        return False
+    if _SKIP_LINE_RE.search(t):
+        return True
+    # 极短且无代码特征时才视为跳过
+    if len(t) < 80 and "无需" in t and "组件" in t:
+        return True
+    return False
+
+
+def _missing_component_imports(ctx: AgentContext, base: CodeBaseContext) -> list[str]:
+    main_src = _read_main_page_source(ctx, base)
+    names = _COMPONENT_IMPORT_RE.findall(main_src)
+    missing: list[str] = []
+    for name in dict.fromkeys(names):
+        comp = ctx.output_path / "src" / "components" / f"{name}.jsx"
+        if not comp.exists():
+            missing.append(name)
+    return missing
 
 
 def _run_code_step(
@@ -134,6 +179,7 @@ def _run_code_step(
     user_feedback: str = "",
     log_prefix: str = "[CodeAgent]",
     debug_name: str | None = None,
+    allow_skip: bool = True,
 ) -> int:
     ctx.log(f"{log_prefix} Step {step_no}/{total} {prompt_name}...")
     system, user_tpl = llm.load_prompt(prompt_name)
@@ -159,7 +205,7 @@ def _run_code_step(
             response,
         )
 
-        if optional and _is_skip_response(response):
+        if optional and allow_skip and _is_skip_response(response):
             ctx.log(f"{log_prefix} Step {step_no}/{total} 跳过（无需额外文件）")
             return 0
 
@@ -179,11 +225,11 @@ def _run_code_step(
             ctx.log(f"{log_prefix} Step {step_no}/{total} 完成")
             return n
 
-        if optional and n == 0 and _is_skip_response(response):
+        if optional and allow_skip and n == 0 and _is_skip_response(response):
             ctx.log(f"{log_prefix} Step {step_no}/{total} 完成（无文件）")
             return 0
 
-    if optional:
+    if optional and allow_skip:
         ctx.log(f"{log_prefix} Step {step_no}/{total} 警告: {last_err}（可选步骤继续）")
         return 0
     raise ValidationError(f"Step {step_no} ({prompt_name}) 失败: {last_err}")
@@ -236,6 +282,12 @@ def _step_components(
     debug_name: str | None = None,
 ) -> None:
     main_src = _read_main_page_source(ctx, base)
+    missing_before = _missing_component_imports(ctx, base)
+    allow_skip = len(missing_before) == 0
+    if missing_before:
+        ctx.log(
+            f"[CodeAgent] Step 2 需生成子组件: {', '.join(missing_before)}"
+        )
 
     def validate() -> str | None:
         err = validate_main_page_file(
@@ -244,17 +296,26 @@ def _step_components(
         )
         if err:
             return err
-        imports = re.findall(
-            r"""from\s+['"](?:\.\./|\./)components/([\w-]+)['"]""",
-            main_src,
-        )
-        if not imports:
+        still = _missing_component_imports(ctx, base)
+        if not still:
             return None
-        for name in imports:
-            comp = ctx.output_path / "src" / "components" / f"{name}.jsx"
-            if not comp.exists():
-                return f"主页面 import 了 {name}，但缺少 src/components/{name}.jsx"
-        return None
+        return (
+            f"主页面仍缺子组件: {', '.join(still)}。"
+            "请为每个 import 输出独立 ```jsx 代码块（首行 // path: src/components/Name.jsx）。"
+        )
+
+    import_list = ", ".join(dict.fromkeys(_COMPONENT_IMPORT_RE.findall(main_src)))
+    user_kwargs = {
+        "requirement_text": base.requirement_text[:3000],
+        "design_spec": base.design_spec_json[:5000],
+        "component_design": base.component_design[:3000],
+        "main_page_rel": base.main_page_rel,
+        "main_page_source": main_src[:8000] or "(主页面尚未生成)",
+    }
+    if import_list:
+        user_kwargs["required_components"] = import_list
+    else:
+        user_kwargs["required_components"] = "（主页面未 import 子组件）"
 
     _run_code_step(
         ctx,
@@ -262,15 +323,10 @@ def _step_components(
         step_no=2,
         total=4,
         prompt_name="code_components",
-        user_kwargs={
-            "requirement_text": base.requirement_text[:3000],
-            "design_spec": base.design_spec_json[:5000],
-            "component_design": base.component_design[:3000],
-            "main_page_rel": base.main_page_rel,
-            "main_page_source": main_src[:8000] or "(主页面尚未生成)",
-        },
+        user_kwargs=user_kwargs,
         validate_fn=validate,
         optional=True,
+        allow_skip=allow_skip,
         path_prefixes=["src/components/"],
         user_feedback=user_feedback,
         log_prefix=log_prefix,
@@ -320,6 +376,8 @@ def _step_styles(
 ) -> None:
     css_imports = collect_css_imports(ctx.output_path)
     css_list = "\n".join(f"- {p}" for p in css_imports) if css_imports else "（无）"
+    main_src = _read_main_page_source(ctx, base)
+    component_src = _read_component_sources(ctx, main_src)
 
     def validate() -> str | None:
         if not css_imports:
@@ -345,6 +403,9 @@ def _step_styles(
         user_kwargs={
             "requirement_text": base.requirement_text[:2000],
             "css_imports": css_list,
+            "main_page_rel": base.main_page_rel,
+            "main_page_source": main_src[:8000] or "(主页面尚未生成)",
+            "component_sources": component_src[:12000],
         },
         validate_fn=validate,
         optional=not bool(css_imports),
