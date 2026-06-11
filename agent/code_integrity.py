@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 from agent import file_writer as fw
+from agent.build_debug_loop import run_build_with_debug
+from agent.build_debug_memory import _load_debug_memory_config
 from agent.context import AgentContext
 from agent.llm_client import LLMClient
 from agent.stages.blocks import write_fenced_blocks
@@ -133,10 +135,15 @@ def _resolve_npm() -> str:
     return "npm"
 
 
-def run_build_check(ctx: AgentContext) -> None:
+def run_build_check_result(
+    ctx: AgentContext,
+    *,
+    attempt_label: str = "",
+) -> tuple[bool, str]:
+    """执行 npm install（如需）与 build，返回 (是否成功, 合并日志)。"""
     cwd = ctx.output_path
     if not (cwd / "package.json").exists():
-        return
+        return True, ""
     npm = _resolve_npm()
     if not (cwd / "node_modules").exists():
         ctx.log("[CodeIntegrity] npm install（build 前）...")
@@ -150,9 +157,11 @@ def run_build_check(ctx: AgentContext) -> None:
             shell=False,
         )
         if install.returncode != 0:
-            raise ValidationError(f"npm install 失败: {(install.stderr or '')[:500]}")
+            log = (install.stdout or "") + (install.stderr or "")
+            return False, log
 
-    ctx.log("[CodeIntegrity] npm run build 冒烟检查...")
+    suffix = f"（第 {attempt_label} 次）" if attempt_label else ""
+    ctx.log(f"[CodeIntegrity] npm run build 冒烟检查{suffix}...")
     result = subprocess.run(
         [npm, "run", "build"],
         cwd=str(cwd),
@@ -163,17 +172,44 @@ def run_build_check(ctx: AgentContext) -> None:
         shell=False,
     )
     log = (result.stdout or "") + (result.stderr or "")
-    fw.write_text(cwd, "report/build_check.log", log[:30000])
-    if result.returncode != 0:
+    log_name = "report/build_check.log" if not attempt_label else f"report/build_check_attempt_{attempt_label}.log"
+    fw.write_text(cwd, log_name, log[:30000])
+    if not attempt_label:
+        fw.write_text(cwd, "report/build_check.log", log[:30000])
+    return result.returncode == 0, log
+
+
+def run_build_check(ctx: AgentContext) -> None:
+    ok, log = run_build_check_result(ctx)
+    if not ok:
         raise ValidationError("项目未能通过 npm run build，详见 report/build_check.log")
     ctx.log("[CodeIntegrity] build 通过")
+
+
+def _run_build_with_optional_debug(ctx: AgentContext, llm: LLMClient | None) -> None:
+    cfg = _load_debug_memory_config()
+    max_retries = int(cfg.get("max_build_retries", 3))
+    debug_enabled = bool(cfg.get("enabled", True))
+
+    def _build_once(c: AgentContext, label: str = "") -> tuple[bool, str]:
+        return run_build_check_result(c, attempt_label=label)
+
+    if debug_enabled and llm and os.getenv("DEEPSEEK_API_KEY"):
+        run_build_with_debug(
+            ctx,
+            llm,
+            run_build_fn=_build_once,
+            max_attempts=max_retries,
+        )
+    else:
+        run_build_check(ctx)
 
 
 def repair_project_integrity(ctx: AgentContext, llm: LLMClient | None) -> None:
     missing = find_missing_local_imports(ctx.output_path)
     if not missing:
         ctx.log("[CodeIntegrity] 相对 import 均已解析")
-        run_build_check(ctx)
+        _run_build_with_optional_debug(ctx, llm)
         return
 
     ctx.log(f"[CodeIntegrity] 发现 {len(missing)} 个缺失 import 目标")
@@ -194,4 +230,4 @@ def repair_project_integrity(ctx: AgentContext, llm: LLMClient | None) -> None:
         names = ", ".join(m["expected"] for m in missing[:8])
         raise ValidationError(f"仍有未解析的 import 目标: {names}")
 
-    run_build_check(ctx)
+    _run_build_with_optional_debug(ctx, llm)

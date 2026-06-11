@@ -128,6 +128,45 @@ _STATE_TRANSITION_RE = re.compile(
     re.MULTILINE,
 )
 _NAMED_STATE_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s+-->", re.MULTILINE)
+_COMPOSITE_STATE_RE = re.compile(r"^\s*state\s+(\w+)\s*\{", re.MULTILINE)
+# 禁止直接拿组件/面板名作状态（语义化命名如 CreateModalOpen、DetailOpen 允许）
+_FORBIDDEN_STATE_NAMES = frozenset(
+    {
+        "modal",
+        "dashboard",
+        "detailpanel",
+        "panel",
+        "toolbar",
+        "header",
+        "column",
+        "card",
+        "page",
+        "view",
+        "formmodal",
+        "boardheader",
+        "filtertoolbar",
+        "kanbancolumn",
+        "taskcard",
+        "taskform",
+        "sidebar",
+        "dialog",
+        "popup",
+    }
+)
+_EVENT_LIKE_STATE_RE = re.compile(
+    r"(?:loaded|success|failure|error|click|submit|mounted?)$",
+    re.IGNORECASE,
+)
+
+
+def _collect_state_machine_state_names(text: str) -> set[str]:
+    names: set[str] = set()
+    for src, dst in _STATE_TRANSITION_RE.findall(text):
+        for token in (src, dst):
+            if token != "[*]":
+                names.add(token)
+    names.update(_COMPOSITE_STATE_RE.findall(text))
+    return names
 
 
 def validate_class_diagram_text(text: str) -> str | None:
@@ -184,6 +223,34 @@ def validate_state_machine_text(text: str) -> str | None:
     has_initial = any(src == "[*]" for src, _ in transitions)
     if not has_initial:
         return "状态机图须从 [*] 出发（如 [*] --> Idle : mount）"
+
+    if re.search(r"\[\*\][A-Za-z_]", t):
+        return "禁止将 [*] 与状态名粘连（如 [*]BoardReady）"
+
+    state_names = _collect_state_machine_state_names(t)
+    ui_like = [n for n in sorted(state_names) if n.lower() in _FORBIDDEN_STATE_NAMES]
+    if ui_like:
+        return (
+            f"状态名不应使用 UI 组件/面板名（如 {', '.join(ui_like[:4])}），"
+            "请改为语义状态（如 DashboardViewing、CreateModalOpen、DetailOpen）"
+        )
+
+    event_like = [n for n in sorted(state_names) if _EVENT_LIKE_STATE_RE.search(n)]
+    if event_like:
+        return f"状态名不应像事件/副作用（如 {', '.join(event_like[:3])}），请写在箭头标签上"
+
+    if len(state_names) > 12:
+        return f"状态过多（{len(state_names)} 个），请合并为约 6～10 个核心抽象状态"
+
+    composites = _COMPOSITE_STATE_RE.findall(t)
+    if len(composites) > 1:
+        return "复合状态过多，请优先使用扁平 stateDiagram"
+
+    if composites and re.search(r"state\s+\w+\s*\{[^}]*\[\*\]\s*-->", t, re.DOTALL):
+        return "复合状态内不要用 [*] 指向 UI 子面板，请改为扁平抽象状态"
+
+    if re.search(r"\[\*\]\s*-->\s*\[\*\]", t):
+        return "禁止 [*] 直接转移到 [*]"
 
     return None
 

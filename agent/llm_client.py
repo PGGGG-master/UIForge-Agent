@@ -39,6 +39,11 @@ def _message_text(message: Any) -> str:
         return f"{reasoning}\n\n{content}".strip()
     if "```" in content and "```" not in reasoning:
         return content
+    # 测试代码常只有 import 落在 content，describe/it 在 reasoning
+    if "describe(" in reasoning and "describe(" not in content:
+        return f"{content}\n\n{reasoning}".strip()
+    if "it(" in reasoning and "it(" not in content and "import " in content:
+        return f"{content}\n\n{reasoning}".strip()
     return f"{content}\n\n{reasoning}".strip()
 
 

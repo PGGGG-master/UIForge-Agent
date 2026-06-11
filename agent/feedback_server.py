@@ -62,8 +62,8 @@ FEEDBACK_UI_HTML = """<!DOCTYPE html>
       </div>
       <div id="status"></div>
       <div class="tips">
-        路由规则：样式 → Step 4；子组件 → Step 2；接口 → Step 3；逻辑/文案 → Step 1。<br/>
-        涉及新功能/新状态时请先 <code>--task design</code>。
+        设计：组件设计 D1 · 状态设计 D2 · API 契约 D3 · 类图 D4 · 状态机 D5 · design_spec D6<br/>
+        代码：逻辑/文案 C1 · 子组件 C2 · 接口 C3 · .css C4。改类图/状态机走设计路由。
       </div>
     </aside>
   </main>

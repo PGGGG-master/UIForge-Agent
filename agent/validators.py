@@ -101,10 +101,13 @@ def tests_dir_has_files(output_dir: Path) -> bool:
 
 
 def validate_test_files_artifact(output_dir: Path) -> None:
-    if not tests_dir_has_files(output_dir):
+    from agent.test_validate import validate_test_outputs
+
+    err = validate_test_outputs(output_dir, min_it=4)
+    if err:
         raise ValidationError(
-            "缺少 tests/*.test.jsx 或 tests/*.test.js。"
-            "请在 code 阶段生成项目专属测试。"
+            f"测试文件无效: {err}。"
+            "须包含 describe(...) 与至少 4 个 it(...)。"
         )
 
 
